@@ -1,0 +1,34 @@
+현포켓몬 불가사의 던전 스타일 로그라이크 RPG의 핵심 데이터 계층과 마을-던전 루프 뼈대를 구축해 줘. 
+한 파일이 너무 길어지지 않도록 단일 책임 원칙(SRP)에 맞춰 클래스를 명확히 분리해서 스크립트를 생성해 줘.
+
+1. 폴더 구조 생성 (Assets/Scripts 하위에 생성)
+- Data/Master (정적 ScriptableObject 데이터)
+- Data/Runtime (동적 세션 및 가방 데이터)
+- Managers (게임 상태, 인벤토리, 상점, 씬 전환 매니저)
+- Network (추후 백엔드 연동을 위한 DTO 및 인터페이스)
+
+2. 스크립트 작성 지침
+[1] ItemData.cs (Assets/Scripts/Data/Master)
+- ScriptableObject로 작성 ([CreateAssetMenu] 속성 추가)
+- 필드: itemId (int), itemName (string), itemType (Enum: Equipment, Consumable, Material), buyPrice (int), sellPrice (int), maxStack (int), description (string)
+
+[2] InventorySlot.cs (Assets/Scripts/Data/Runtime)
+- [System.Serializable] 일반 C# 클래스
+- 필드: itemId (int), quantity (int), enhanceLevel (int)
+
+[3] PlayerSessionData.cs (Assets/Scripts/Data/Runtime)
+- AccountData 클래스: userId, nickname, gold (초기값 1000), storageItems (List<InventorySlot>), clearedDungeonIds (List<int>)
+- DungeonBag 클래스: acquiredGold (int), bagItems (List<InventorySlot>) -> 던전 진입 시 초기화, 전멸 시 파기(Clear), 탈출 성공 시에만 AccountData로 병합(Commit)하는 메서드 포함
+
+[4] TownDungeonLoopManager.cs (Assets/Scripts/Managers)
+- 싱글톤(DontDestroyOnLoad) 매니저
+- 현재 상태(Town, Dungeon) 관리
+- 기능 메서드:
+  * EnterDungeon(int dungeonId): DungeonBag을 새로 초기화하고 던전 상태 진입
+  * AddLootInDungeon(int itemId, int quantity): 던전 내 임시 가방(DungeonBag)에 전리품 추가
+  * OnPlayerDefeated(): 전멸 처리 (DungeonBag 데이터 파기 후 마을 복귀)
+  * OnDungeonEscaped(int dungeonId): 탈출 성공 처리 (DungeonBag의 골드와 아이템을 AccountData 창고로 정산/병합하고 클리어 기록 갱신 후 마을 복귀)
+  * BuyItem(ItemData item, int quantity) / SellItem(int slotIndex, int quantity): 마을 창고 및 골드 증감 처리
+
+[5] Sample Master Data 생성
+- 유니티 에디터 기능을 활용해 테스트용 ItemData ScriptableObject 에셋 3개(예: 101_오랭열매, 102_탈출구슬, 201_철검)를 Assets/Resources/Items 폴더에 실제 에셋 파일(.asset)로 생성해 줘.

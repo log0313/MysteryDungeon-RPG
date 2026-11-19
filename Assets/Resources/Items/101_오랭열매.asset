@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b7d4f27e4b4f3842bfa883bd4bf181e, type: 3}
+  m_Name: "101_\uC624\uB7AD\uC5F4\uB9E4"
+  m_EditorClassIdentifier: Assembly-CSharp::ItemData
+  itemId: 101
+  itemName: "\uC624\uB7AD\uC5F4\uB9E4"
+  itemType: 1
+  description: "HP\uB97C 100 \uD68C\uBCF5\uC2DC\uCF1C \uC8FC\uB294 \uC2E0\uBE44\uD55C
+    \uC5F4\uB9E4. \uB358\uC804 \uD0D0\uD5D8\uC758 \uD544\uC218\uD488\uC774\uB2E4."
+  buyPrice: 100
+  sellPrice: 25
+  maxStack: 99
