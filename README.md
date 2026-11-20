@@ -1,11 +1,11 @@
 flowchart TD
-    subgraph Client [Unity Client]
-        Master[(MasterData\nScriptableObject)]
-        Account[(AccountData\n영구 세션 캐시)]
-        Bag[(DungeonBag\n휘발성 임시 가방)]
+    subgraph Client ["Unity Client (C#)"]
+        Master["MasterData (ScriptableObject)"]
+        Account["AccountData (영구 세션 캐시)"]
+        Bag["DungeonBag (휘발성 임시 가방)"]
         
-        Town[마을 씬\n상점 / 창고]
-        Dungeon[던전 씬\n탐험 / 전투 / 루팅]
+        Town["마을 씬 (상점 / 창고)"]
+        Dungeon["던전 씬 (탐험 / 전투 / 루팅)"]
         
         Master -. 스펙 참조 .-> Town
         Master -. 스펙 참조 .-> Dungeon
@@ -18,8 +18,8 @@ flowchart TD
         Bag -->|탈출 성공: 정산 Commit| Account
     end
 
-    subgraph Backend [Backend & DB]
-        DB[(Cloud DB\nUsers / Storage / Progress)]
+    subgraph Backend ["Backend & DB"]
+        DB[("Cloud DB (Users / Storage / Progress)")]
     end
 
-    Account <==>|트랜잭션 동기화\nJSON / HTTPS| DB
+    Account <==>|트랜잭션 동기화 JSON / HTTPS| DB
