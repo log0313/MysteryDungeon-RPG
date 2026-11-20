@@ -13,11 +13,13 @@ namespace RogueLike.Network
         public string nickname;
         public int gold;
         public List<InventorySlotDto> storageItems = new List<InventorySlotDto>();
+        public List<InventorySlotDto> equippedItems = new List<InventorySlotDto>();
         public List<int> clearedDungeonIds = new List<int>();
 
         public UserAccountDto()
         {
             storageItems = new List<InventorySlotDto>();
+            equippedItems = new List<InventorySlotDto>();
             clearedDungeonIds = new List<int>();
         }
 
@@ -33,11 +35,25 @@ namespace RogueLike.Network
                 clearedDungeonIds = new List<int>(account.clearedDungeonIds)
             };
 
-            foreach (var slot in account.storageItems)
+            if (account.storageItems != null)
             {
-                if (slot != null)
+                foreach (var slot in account.storageItems)
                 {
-                    dto.storageItems.Add(InventorySlotDto.FromRuntime(slot));
+                    if (slot != null)
+                    {
+                        dto.storageItems.Add(InventorySlotDto.FromRuntime(slot));
+                    }
+                }
+            }
+
+            if (account.equippedItems != null)
+            {
+                foreach (var slot in account.equippedItems)
+                {
+                    if (slot != null)
+                    {
+                        dto.equippedItems.Add(InventorySlotDto.FromRuntime(slot));
+                    }
                 }
             }
 
@@ -51,11 +67,25 @@ namespace RogueLike.Network
                 clearedDungeonIds = new List<int>(clearedDungeonIds)
             };
 
-            foreach (var slotDto in storageItems)
+            if (storageItems != null)
             {
-                if (slotDto != null)
+                foreach (var slotDto in storageItems)
                 {
-                    account.storageItems.Add(slotDto.ToRuntime());
+                    if (slotDto != null)
+                    {
+                        account.storageItems.Add(slotDto.ToRuntime());
+                    }
+                }
+            }
+
+            if (equippedItems != null)
+            {
+                foreach (var slotDto in equippedItems)
+                {
+                    if (slotDto != null)
+                    {
+                        account.equippedItems.Add(slotDto.ToRuntime());
+                    }
                 }
             }
 

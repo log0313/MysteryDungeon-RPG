@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 계정 영구 데이터 (마을 창고, 보유 골드, 던전 클리어 이력 등)
+/// 계정 영구 데이터 (마을 창고, 보유 골드, 장착 장비, 던전 클리어 이력 등)
 /// </summary>
 [Serializable]
 public class AccountData
@@ -20,6 +20,9 @@ public class AccountData
     [Tooltip("마을 창고 보관 아이템 목록")]
     public List<InventorySlot> storageItems = new List<InventorySlot>();
 
+    [Tooltip("현재 장착 중인 장비 목록 (무기, 방어구, 액세서리 등)")]
+    public List<InventorySlot> equippedItems = new List<InventorySlot>();
+
     [Tooltip("클리어한 던전 ID 목록")]
     public List<int> clearedDungeonIds = new List<int>();
 
@@ -29,6 +32,7 @@ public class AccountData
         nickname = "구조대원";
         gold = 1000;
         storageItems = new List<InventorySlot>();
+        equippedItems = new List<InventorySlot>();
         clearedDungeonIds = new List<int>();
     }
 
@@ -38,6 +42,7 @@ public class AccountData
         this.nickname = nickname;
         this.gold = initialGold;
         this.storageItems = new List<InventorySlot>();
+        this.equippedItems = new List<InventorySlot>();
         this.clearedDungeonIds = new List<int>();
     }
 
@@ -92,7 +97,7 @@ public class AccountData
 }
 
 /// <summary>
-/// 던전 탐험 중 임시 세션 가방 데이터 (전리품, 획득 골드)
+/// 던전 탐험 중 임시 세션 가방 데이터 (전리품, 획득 골드, 장착 장비)
 /// </summary>
 [Serializable]
 public class DungeonBag
@@ -103,18 +108,24 @@ public class DungeonBag
     [Tooltip("던전 내에서 획득한 임시 아이템 목록")]
     public List<InventorySlot> bagItems = new List<InventorySlot>();
 
+    [Tooltip("현재 장착 중인 장비 목록")]
+    public List<InventorySlot> equippedItems = new List<InventorySlot>();
+
     public DungeonBag()
     {
         Clear();
+        equippedItems = new List<InventorySlot>();
     }
 
     /// <summary>
-    /// 던전 진입 또는 전멸 시 임시 가방 데이터 파기(Clear)
+    /// 던전 진입 또는 세션 초기화 시 임시 가방 데이터 파기(Clear).
+    /// 장착 중인 장비(equippedItems)는 마을-던전 이동 시에도 보존됩니다.
     /// </summary>
     public void Clear()
     {
         acquiredGold = 0;
         bagItems.Clear();
+        // equippedItems는 전멸 및 이동 시 보존 대상이므로 초기화하지 않음.
     }
 
     /// <summary>
@@ -156,7 +167,8 @@ public class DungeonBag
     }
 
     /// <summary>
-    /// 던전 탈출 성공 시 호출: 임시 가방의 골드와 아이템을 계정 창고(AccountData)로 병합(Commit)
+    /// 던전 탈출 성공 시 호출: 임시 가방의 골드와 아이템을 계정 창고(AccountData)로 병합(Commit).
+    /// 장착 중인 장비는 계정 및 가방에 유지됩니다.
     /// </summary>
     public void Commit(AccountData accountData)
     {
@@ -177,7 +189,7 @@ public class DungeonBag
 
         Debug.Log($"[DungeonBag] Commit 완료: {acquiredGold}G 및 {bagItems.Count}개 슬롯 아이템이 계정 창고로 정산되었습니다.");
 
-        // 3. 임시 가방 비우기
+        // 3. 임시 가방 비우기 (장착 장비는 유지)
         Clear();
     }
 }

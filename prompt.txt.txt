@@ -1,34 +1,15 @@
-현포켓몬 불가사의 던전 스타일 로그라이크 RPG의 핵심 데이터 계층과 마을-던전 루프 뼈대를 구축해 줘. 
-한 파일이 너무 길어지지 않도록 단일 책임 원칙(SRP)에 맞춰 클래스를 명확히 분리해서 스크립트를 생성해 줘.
+PlayerSessionData.cs와 TownDungeonLoopManager.cs에 '장착 중인 아이템은 전멸 페널티에서 제외'하는 규칙을 반영하여 업데이트해 줘.
 
-1. 폴더 구조 생성 (Assets/Scripts 하위에 생성)
-- Data/Master (정적 ScriptableObject 데이터)
-- Data/Runtime (동적 세션 및 가방 데이터)
-- Managers (게임 상태, 인벤토리, 상점, 씬 전환 매니저)
-- Network (추후 백엔드 연동을 위한 DTO 및 인터페이스)
+1. 장착 아이템 구조 추가 (PlayerSessionData.cs)
+- AccountData 또는 DungeonBag에 현재 장착 중인 장비를 관리하는 equippedItems (List<InventorySlot>)를 추가해 줘. (무기, 방어구, 액세서리 등 장착 중인 장비 보관)
+- 마을과 던전 이동 시 장착 중인 장비는 그대로 유지되어야 함.
 
-2. 스크립트 작성 지침
-[1] ItemData.cs (Assets/Scripts/Data/Master)
-- ScriptableObject로 작성 ([CreateAssetMenu] 속성 추가)
-- 필드: itemId (int), itemName (string), itemType (Enum: Equipment, Consumable, Material), buyPrice (int), sellPrice (int), maxStack (int), description (string)
+2. 장비 장착/해제 메서드 추가 (TownDungeonLoopManager.cs)
+- EquipItemFromBag(int bagSlotIndex): 가방(bagItems)에 있는 장비 타입(ItemType.Equipment) 아이템을 장착 슬롯(equippedItems)으로 이동시키는 메서드 (이미 같은 부위나 장비를 끼고 있다면 기존 장비는 가방으로 되돌림).
+- UnequipItemToBag(int equipSlotIndex): 장착 중인 장비를 다시 가방(bagItems)으로 해제하는 메서드.
 
-[2] InventorySlot.cs (Assets/Scripts/Data/Runtime)
-- [System.Serializable] 일반 C# 클래스
-- 필드: itemId (int), quantity (int), enhanceLevel (int)
-
-[3] PlayerSessionData.cs (Assets/Scripts/Data/Runtime)
-- AccountData 클래스: userId, nickname, gold (초기값 1000), storageItems (List<InventorySlot>), clearedDungeonIds (List<int>)
-- DungeonBag 클래스: acquiredGold (int), bagItems (List<InventorySlot>) -> 던전 진입 시 초기화, 전멸 시 파기(Clear), 탈출 성공 시에만 AccountData로 병합(Commit)하는 메서드 포함
-
-[4] TownDungeonLoopManager.cs (Assets/Scripts/Managers)
-- 싱글톤(DontDestroyOnLoad) 매니저
-- 현재 상태(Town, Dungeon) 관리
-- 기능 메서드:
-  * EnterDungeon(int dungeonId): DungeonBag을 새로 초기화하고 던전 상태 진입
-  * AddLootInDungeon(int itemId, int quantity): 던전 내 임시 가방(DungeonBag)에 전리품 추가
-  * OnPlayerDefeated(): 전멸 처리 (DungeonBag 데이터 파기 후 마을 복귀)
-  * OnDungeonEscaped(int dungeonId): 탈출 성공 처리 (DungeonBag의 골드와 아이템을 AccountData 창고로 정산/병합하고 클리어 기록 갱신 후 마을 복귀)
-  * BuyItem(ItemData item, int quantity) / SellItem(int slotIndex, int quantity): 마을 창고 및 골드 증감 처리
-
-[5] Sample Master Data 생성
-- 유니티 에디터 기능을 활용해 테스트용 ItemData ScriptableObject 에셋 3개(예: 101_오랭열매, 102_탈출구슬, 201_철검)를 Assets/Resources/Items 폴더에 실제 에셋 파일(.asset)로 생성해 줘.
+3. 전멸 페널티 로직 수정 (OnPlayerDefeated)
+- 전멸 시 골드는 기존처럼 10% 차감(소수점 버림)해 줘.
+- 장착 슬롯(equippedItems)에 들어있는 아이템은 전멸 페널티에서 완전히 제외되어 100% 보존되도록 처리해 줘.
+- 오직 일반 가방(bagItems)에 들어있는 비장착 아이템들만 개별 수량 단위로 펼친 뒤 무작위 셔플하여 절반(totalCount / 2)을 잃어버리게 구현해 줘.
+- Console 로그(Debug.Log)에 "장착 장비는 안전하게 보존됨"과 함께 잃어버린 골드, 잃어버린 가방 아이템 목록이 명확히 출력되도록 작성해 줘.
