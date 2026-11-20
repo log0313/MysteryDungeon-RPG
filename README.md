@@ -1,25 +1,35 @@
-flowchart TD
-    subgraph Client [Unity Client]
-        Master[(MasterData\nScriptableObject)]
-        Account[(AccountData\n영구 세션 캐시)]
-        Bag[(DungeonBag\n휘발성 임시 가방)]
-        
-        Town[마을 씬\n상점 / 창고]
-        Dungeon[던전 씬\n탐험 / 전투 / 루팅]
-        
-        Master -. 스펙 참조 .-> Town
-        Master -. 스펙 참조 .-> Dungeon
-        
-        Town <-->|구매 / 판매 / 보관| Account
-        Town -->|던전 진입: 가방 초기화| Bag
-        Dungeon -->|전리품 획득| Bag
-        
-        Bag -->|전멸 시: 파기 Clear| Town
-        Bag -->|탈출 성공: 정산 Commit| Account
-    end
-
-    subgraph Backend [Backend & DB]
-        DB[(Cloud DB\nUsers / Storage / Progress)]
-    end
-
-    Account <==>|트랜잭션 동기화\nJSON / HTTPS| DB
++-----------------------------------------------------------------------------------+
+|                            [ Unity Client (C#) ]                                  |
+|                                                                                   |
+|  +-------------------------------------+   +-----------------------------------+  |
+|  |         1. Core Loop Layer          |   |        2. Data Layer              |  |
+|  |  (TownDungeonLoopManager - Singleton)|   |                                   |  |
+|  |                                     |   |  [Static Master Data]             |  |
+|  |  [Town Scene]       [Dungeon Scene] |   |   - ItemData (ScriptableObject)   |  |
+|  |   ├─ 상점 (Shop)     ├─ 절차적 맵   |   |   - Monster / Dungeon Spec        |  |
+|  |   ├─ 창고 (Storage)  ├─ 턴제 큐     |   |                                   |  |
+|  |   └─ NPC AI 대화     └─ 전리품 루팅 |   |  [Dynamic Runtime Session]        |  |
+|  +--------┬────────────────────┬-------+   |   - AccountData (영구 캐시)       |  |
+|           │ (탈출/거래)         │ (루팅)    |   - DungeonBag  (휘발성 임시 가방)|  |
+|           ▼                    ▼           +-----------------┬-----------------+  |
+|  +-----------------------------------------------------------+-----------------+  |
+|  |                   3. Network & Serialization Layer                          |  |
+|  |  - DTO (JSON 직렬화)  /  Async REST API Client  /  Main-Thread UI Dispatcher |  |
+|  +---------------------------------------┬-------------------------------------+  |
++------------------------------------------|----------------------------------------+
+                                           │ HTTPS / JSON (Commit & Sync)
+                                           ▼
++-----------------------------------------------------------------------------------+
+|                    [ Backend Server & Database (Cloud BaaS) ]                     |
+|                                                                                   |
+|  +-------------------------+   +-----------------------+   +-------------------+  |
+|  |  Users (계정/재화)      |   |  User_Storage_Items   |   |  Shop_Catalog     |  |
+|  |  - Gold, Slot Limit     |   |  - 창고 영구 아이템   |   |  - 상점 진열/해금 |  |
+|  +-------------------------+   +-----------------------+   +-------------------+  |
+|                                                                                   |
+|  +-------------------------+   +-----------------------------------------------+  |
+|  |  User_Dungeon_Progress  |   |  Transaction Engine (데이터 무결성 보장)      |  |
+|  |  - 클리어 여부/최고 층  |   |  - 전멸 시: Rollback (DungeonBag 파기)        |  |
+|  +-------------------------+   |  - 탈출 시: Commit (골드+아이템 일괄 병합)    |  |
+|                                +-----------------------------------------------+  |
++-----------------------------------------------------------------------------------+
