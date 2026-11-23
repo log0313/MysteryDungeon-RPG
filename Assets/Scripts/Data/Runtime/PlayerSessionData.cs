@@ -14,8 +14,8 @@ public class AccountData
     [Tooltip("유저 닉네임")]
     public string nickname = "구조대원";
 
-    [Tooltip("보유 골드 (초기값 1000)")]
-    public int gold = 1000;
+    [Tooltip("보유 골드 (초기값 5000)")]
+    public int gold = 5000;
 
     [Tooltip("마을 창고 보관 아이템 목록")]
     public List<InventorySlot> storageItems = new List<InventorySlot>();
@@ -30,13 +30,13 @@ public class AccountData
     {
         userId = "player_001";
         nickname = "구조대원";
-        gold = 1000;
+        gold = 5000;
         storageItems = new List<InventorySlot>();
         equippedItems = new List<InventorySlot>();
         clearedDungeonIds = new List<int>();
     }
 
-    public AccountData(string userId, string nickname, int initialGold = 1000)
+    public AccountData(string userId, string nickname, int initialGold = 5000)
     {
         this.userId = userId;
         this.nickname = nickname;
@@ -164,6 +164,65 @@ public class DungeonBag
             bagItems.Add(new InventorySlot(itemId, count, enhanceLevel));
             quantity -= count;
         }
+    }
+
+    /// <summary>
+    /// 최대 슬롯 수(maxSlots) 제한을 두고 가방에 아이템 추가.
+    /// 기존 슬롯 중첩 합산 및 남은 슬롯 내 신규 슬롯 생성을 진행하며,
+    /// 실제로 가방에 수납된 아이템 수량을 반환합니다.
+    /// </summary>
+    public int AddItemWithLimit(int itemId, int quantity, int enhanceLevel = 0, int maxStack = 99, int maxSlots = 20)
+    {
+        if (quantity <= 0) return 0;
+
+        int initialQuantity = quantity;
+
+        // 1. 중첩 가능한 기존 슬롯에 합산 시도
+        if (maxStack > 1)
+        {
+            foreach (var slot in bagItems)
+            {
+                if (slot.itemId == itemId && slot.enhanceLevel == enhanceLevel && slot.quantity < maxStack)
+                {
+                    int canAdd = maxStack - slot.quantity;
+                    int added = Mathf.Min(canAdd, quantity);
+                    slot.quantity += added;
+                    quantity -= added;
+
+                    if (quantity <= 0) break;
+                }
+            }
+        }
+
+        // 2. 남은 수량이 있고 가방 슬롯이 최대 슬롯 수 미만인 경우 신규 슬롯 추가
+        while (quantity > 0 && bagItems.Count < maxSlots)
+        {
+            int count = Mathf.Min(quantity, maxStack);
+            bagItems.Add(new InventorySlot(itemId, count, enhanceLevel));
+            quantity -= count;
+        }
+
+        return initialQuantity - quantity; // 가방에 실제로 들어간 수량 반환
+    }
+
+    /// <summary>
+    /// 가방 특정 슬롯의 아이템 제거/차감
+    /// </summary>
+    public bool RemoveItem(int slotIndex, int quantity)
+    {
+        if (slotIndex < 0 || slotIndex >= bagItems.Count)
+            return false;
+
+        var slot = bagItems[slotIndex];
+        if (slot.quantity < quantity)
+            return false;
+
+        slot.quantity -= quantity;
+        if (slot.quantity <= 0)
+        {
+            bagItems.RemoveAt(slotIndex);
+        }
+        return true;
     }
 
     /// <summary>

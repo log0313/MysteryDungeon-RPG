@@ -22,6 +22,10 @@ public class TownDungeonLoopManager : MonoBehaviour
     [SerializeField] private AccountData accountData = new AccountData();
     [SerializeField] private DungeonBag dungeonBag = new DungeonBag();
 
+    [Header("가방 설정")]
+    [SerializeField] private int maxBagSlots = 20;
+    public int MaxBagSlots => maxBagSlots;
+
     public AccountData AccountData => accountData;
     public DungeonBag DungeonBag => dungeonBag;
     public List<InventorySlot> EquippedItems => dungeonBag.equippedItems;
@@ -101,16 +105,15 @@ public class TownDungeonLoopManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 던전 진입: 임시 가방(DungeonBag) 초기화 및 Dungeon 상태로 전환 (장착 중인 장비는 유지됨)
+    /// 던전 진입: 던전 상태(GameState.Dungeon)로 전환 (마을에서 챙긴 가방 아이템 및 장착 장비 유지)
     /// </summary>
     public void EnterDungeon(int dungeonId)
     {
         SyncEquippedItems();
         currentDungeonId = dungeonId;
-        dungeonBag.Clear();
         currentState = GameState.Dungeon;
 
-        Debug.Log($"[TownDungeonLoopManager] 던전(ID: {dungeonId})에 진입했습니다. DungeonBag이 초기화되었습니다. (장착 장비 {dungeonBag.equippedItems.Count}개 유지)");
+        Debug.Log($"[TownDungeonLoopManager] 던전(ID: {dungeonId})에 진입했습니다. (가방 아이템 {dungeonBag.bagItems.Count}개, 장착 장비 {dungeonBag.equippedItems.Count}개 지참)");
         
         OnStateChanged?.Invoke(currentState);
         OnDungeonBagChanged?.Invoke(dungeonBag);
@@ -393,16 +396,11 @@ public class TownDungeonLoopManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 던전 탈출 성공 처리: 가방의 골드/전리품을 AccountData로 Commit, 클리어 기록 갱신 후 Town으로 복귀
+    /// 던전 탈출 성공 처리: 가방과 지참 골드를 그대로 유지한 채 클리어 기록 갱신 후 Town으로 복귀
     /// </summary>
     public void OnDungeonEscaped(int dungeonId)
     {
-        Debug.Log($"[TownDungeonLoopManager] 던전(ID: {dungeonId}) 탈출 성공! 전리품 정산을 진행합니다.");
-
-        // 1. 임시 가방 데이터를 계정 창고로 정산/병합 (장착 장비는 유지됨)
-        dungeonBag.Commit(accountData);
-
-        // 2. 던전 클리어 기록 추가
+        // 1. 던전 클리어 기록 추가
         if (!accountData.clearedDungeonIds.Contains(dungeonId))
         {
             accountData.clearedDungeonIds.Add(dungeonId);
@@ -412,13 +410,16 @@ public class TownDungeonLoopManager : MonoBehaviour
         currentDungeonId = -1;
         currentState = GameState.Town;
 
+        Debug.Log($"[TownDungeonLoopManager] 던전(ID: {dungeonId}) 탈출 성공! 획득한 아이템과 골드가 가방에 그대로 보존되었습니다. (안전 보관을 원하면 마을 창고/은행에 맡기세요)");
+
         OnStateChanged?.Invoke(currentState);
         OnAccountDataChanged?.Invoke(accountData);
         OnDungeonBagChanged?.Invoke(dungeonBag);
     }
 
     /// <summary>
-    /// 상점에서 아이템 구매: 골드 차감 및 마을 창고로 아이템 지급
+    /// 상점에서 아이템 구매: 지참 골드 우선 차감(부족분은 은행 골드에서 추가 차감) 후
+    /// 출정 가방(DungeonBag) 우선 지급 (가방 만석 시 마을 창고로 오버플로우)
     /// </summary>
     public bool BuyItem(ItemData item, int quantity)
     {
@@ -429,19 +430,237 @@ public class TownDungeonLoopManager : MonoBehaviour
         }
 
         int totalCost = item.buyPrice * quantity;
-        if (accountData.gold < totalCost)
+        int totalAvailableGold = dungeonBag.acquiredGold + accountData.gold;
+
+        // (1) 먼저 지참 골드 + 마을 은행 골드의 합계가 totalCost보다 적으면 실패 처리
+        if (totalAvailableGold < totalCost)
         {
-            Debug.LogWarning($"[TownDungeonLoopManager] 골드가 부족합니다. (필요: {totalCost}G / 보유: {accountData.gold}G)");
+            Debug.LogWarning($"[TownDungeonLoopManager] 골드가 부족합니다 (필요: {totalCost}G, 보유 합계: {totalAvailableGold}G [지참: {dungeonBag.acquiredGold}G, 은행: {accountData.gold}G])");
             return false;
         }
 
-        accountData.gold -= totalCost;
-        accountData.AddStorageItem(item.itemId, quantity, 0, item.maxStack);
+        // (2) 지참 골드(DungeonBag)에서 먼저 차감하고, 지참 골드가 모자란 차액만큼만 마을 은행 골드(AccountData.gold)에서 추가 차감
+        int fromBagGold = Mathf.Min(dungeonBag.acquiredGold, totalCost);
+        dungeonBag.acquiredGold -= fromBagGold;
 
-        Debug.Log($"[TownDungeonLoopManager] 아이템 구매 완료: {item.itemName} x{quantity} (지불: {totalCost}G, 잔여: {accountData.gold}G)");
+        int fromBankGold = totalCost - fromBagGold;
+        accountData.gold -= fromBankGold;
+
+        // (3) 결제 내역 Debug.Log 출력
+        string paymentBreakdown = fromBankGold > 0
+            ? $"지참 골드 {fromBagGold}G + 은행 골드 {fromBankGold}G 차감"
+            : $"지참 골드 {fromBagGold}G 전액 차감";
+        Debug.Log($"[TownDungeonLoopManager] 상점 결제 완료: {paymentBreakdown} (잔여 - 지참: {dungeonBag.acquiredGold}G, 은행: {accountData.gold}G)");
+
+        // 1. 출정 가방(DungeonBag)에 우선 보관 시도 (최대 maxBagSlots = 20)
+        int addedToBag = dungeonBag.AddItemWithLimit(item.itemId, quantity, 0, item.maxStack, maxBagSlots);
+        int overflowToStorage = quantity - addedToBag;
+
+        // 2. 가방에 더 이상 들어가지 못한 초과분은 마을 창고(AccountData)로 자동 보관
+        if (overflowToStorage > 0)
+        {
+            accountData.AddStorageItem(item.itemId, overflowToStorage, 0, item.maxStack);
+        }
+
+        // 3. Unity Console에 명확한 보관 위치 로그 출력
+        if (overflowToStorage == 0)
+        {
+            Debug.Log($"[TownDungeonLoopManager] 아이템 구매 보관 완료 (출정 가방): {item.itemName} x{quantity} (가방 슬롯: {dungeonBag.bagItems.Count}/{maxBagSlots})");
+        }
+        else if (addedToBag == 0)
+        {
+            Debug.Log($"[TownDungeonLoopManager] 출정 가방 슬롯이 가득 찼습니다 ({dungeonBag.bagItems.Count}/{maxBagSlots}). 구매한 아이템이 마을 창고로 자동 보관되었습니다: {item.itemName} x{quantity}");
+        }
+        else
+        {
+            Debug.Log($"[TownDungeonLoopManager] 아이템 구매 보관 완료 (가방 부분 보관 및 창고 오버플로우): {item.itemName} x{quantity} [가방: {addedToBag}개, 창고: {overflowToStorage}개] (가방 슬롯: {dungeonBag.bagItems.Count}/{maxBagSlots})");
+        }
 
         OnAccountDataChanged?.Invoke(accountData);
+        OnDungeonBagChanged?.Invoke(dungeonBag);
         return true;
+    }
+
+    /// <summary>
+    /// 디버그 및 테스트용 마을 골드 충전
+    /// </summary>
+    public void AddTownGold(int amount)
+    {
+        if (accountData == null) accountData = new AccountData();
+        accountData.gold += amount;
+        Debug.Log($"[TownDungeonLoopManager] [디버그] 마을 골드 충전: +{amount}G (현재 보유 골드: {accountData.gold}G)");
+        OnAccountDataChanged?.Invoke(accountData);
+    }
+
+    /// <summary>
+    /// 지참 골드(DungeonBag.acquiredGold)에서 마을 은행 골드(AccountData.gold)로 안전하게 입금
+    /// </summary>
+    public bool DepositGold(int amount)
+    {
+        if (amount <= 0)
+        {
+            Debug.LogWarning("[TownDungeonLoopManager] 입금할 골드 금액은 0보다 커야 합니다.");
+            return false;
+        }
+
+        if (currentState != GameState.Town)
+        {
+            Debug.LogWarning("[TownDungeonLoopManager] 마을(Town) 상태에서만 은행 입금을 이용할 수 있습니다.");
+            return false;
+        }
+
+        if (dungeonBag.acquiredGold < amount)
+        {
+            Debug.LogWarning($"[TownDungeonLoopManager] 입금 실패: 지참 골드가 부족합니다. (요청: {amount}G / 보유 지참 골드: {dungeonBag.acquiredGold}G)");
+            return false;
+        }
+
+        dungeonBag.acquiredGold -= amount;
+        accountData.gold += amount;
+
+        Debug.Log($"[TownDungeonLoopManager] [마을 은행 입금] {amount}G 입금 완료 (지참 골드: {dungeonBag.acquiredGold}G, 은행 보유: {accountData.gold}G)");
+
+        OnAccountDataChanged?.Invoke(accountData);
+        OnDungeonBagChanged?.Invoke(dungeonBag);
+        return true;
+    }
+
+    /// <summary>
+    /// 마을 은행 골드(AccountData.gold)에서 지참 골드(DungeonBag.acquiredGold)로 출금
+    /// </summary>
+    public bool WithdrawGold(int amount)
+    {
+        if (amount <= 0)
+        {
+            Debug.LogWarning("[TownDungeonLoopManager] 출금할 골드 금액은 0보다 커야 합니다.");
+            return false;
+        }
+
+        if (currentState != GameState.Town)
+        {
+            Debug.LogWarning("[TownDungeonLoopManager] 마을(Town) 상태에서만 은행 출금을 이용할 수 있습니다.");
+            return false;
+        }
+
+        if (accountData.gold < amount)
+        {
+            Debug.LogWarning($"[TownDungeonLoopManager] 출금 실패: 은행 골드가 부족합니다. (요청: {amount}G / 보유 은행 골드: {accountData.gold}G)");
+            return false;
+        }
+
+        accountData.gold -= amount;
+        dungeonBag.AddGold(amount);
+
+        Debug.Log($"[TownDungeonLoopManager] [마을 은행 출금] {amount}G 출금 완료 (은행 보유: {accountData.gold}G, 지참 골드: {dungeonBag.acquiredGold}G)");
+
+        OnAccountDataChanged?.Invoke(accountData);
+        OnDungeonBagChanged?.Invoke(dungeonBag);
+        return true;
+    }
+
+    // 기존 메서드 호환성 연결
+    public bool MoveGoldToBag(int amount) => WithdrawGold(amount);
+    public bool MoveGoldToAccount(int amount) => DepositGold(amount);
+
+    /// <summary>
+    /// ID로 상점에서 아이템 구매: 골드 차감 및 마을 창고로 아이템 지급
+    /// </summary>
+    public bool BuyItem(int itemId, int quantity)
+    {
+        var item = GetItemData(itemId);
+        if (item == null)
+        {
+            Debug.LogWarning($"[TownDungeonLoopManager] 구매할 아이템(ID: {itemId}) 마스터 데이터를 찾을 수 없습니다.");
+            return false;
+        }
+        return BuyItem(item, quantity);
+    }
+
+    /// <summary>
+    /// 창고 특정 슬롯의 아이템을 출정 가방(DungeonBag)으로 이동
+    /// </summary>
+    public bool MoveStorageToBag(int storageSlotIndex, int quantity = 1)
+    {
+        if (storageSlotIndex < 0 || storageSlotIndex >= accountData.storageItems.Count)
+        {
+            Debug.LogWarning($"[TownDungeonLoopManager] 유효하지 않은 창고 슬롯 인덱스입니다: {storageSlotIndex}");
+            return false;
+        }
+        if (quantity <= 0) return false;
+
+        var slot = accountData.storageItems[storageSlotIndex];
+        int moveCount = Mathf.Min(quantity, slot.quantity);
+        int itemId = slot.itemId;
+        int enhanceLevel = slot.enhanceLevel;
+
+        var itemData = GetItemData(itemId);
+        int maxStack = itemData != null ? itemData.maxStack : 99;
+
+        if (accountData.RemoveStorageItem(storageSlotIndex, moveCount))
+        {
+            dungeonBag.AddItem(itemId, moveCount, enhanceLevel, maxStack);
+            Debug.Log($"[TownDungeonLoopManager] 창고 → 가방 이동 완료: {itemData?.itemName ?? itemId.ToString()} x{moveCount}");
+
+            OnAccountDataChanged?.Invoke(accountData);
+            OnDungeonBagChanged?.Invoke(dungeonBag);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 출정 가방(DungeonBag) 특정 슬롯의 아이템을 창고로 이동
+    /// </summary>
+    public bool MoveBagToStorage(int bagSlotIndex, int quantity = 1)
+    {
+        if (bagSlotIndex < 0 || bagSlotIndex >= dungeonBag.bagItems.Count)
+        {
+            Debug.LogWarning($"[TownDungeonLoopManager] 유효하지 않은 가방 슬롯 인덱스입니다: {bagSlotIndex}");
+            return false;
+        }
+        if (quantity <= 0) return false;
+
+        var slot = dungeonBag.bagItems[bagSlotIndex];
+        int moveCount = Mathf.Min(quantity, slot.quantity);
+        int itemId = slot.itemId;
+        int enhanceLevel = slot.enhanceLevel;
+
+        var itemData = GetItemData(itemId);
+        int maxStack = itemData != null ? itemData.maxStack : 99;
+
+        if (dungeonBag.RemoveItem(bagSlotIndex, moveCount))
+        {
+            accountData.AddStorageItem(itemId, moveCount, enhanceLevel, maxStack);
+            Debug.Log($"[TownDungeonLoopManager] 가방 → 창고 이동 완료: {itemData?.itemName ?? itemId.ToString()} x{moveCount}");
+
+            OnAccountDataChanged?.Invoke(accountData);
+            OnDungeonBagChanged?.Invoke(dungeonBag);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 가방에 있는 첫 번째 장비(ItemType.Equipment) 아이템을 찾아 장착 슬롯으로 이동
+    /// </summary>
+    public bool EquipFirstEquipmentFromBag()
+    {
+        if (dungeonBag == null || dungeonBag.bagItems == null) return false;
+
+        for (int i = 0; i < dungeonBag.bagItems.Count; i++)
+        {
+            var slot = dungeonBag.bagItems[i];
+            if (slot == null) continue;
+
+            var itemData = GetItemData(slot.itemId);
+            if (itemData != null && itemData.itemType == ItemType.Equipment)
+            {
+                return EquipItemFromBag(i);
+            }
+        }
+
+        Debug.LogWarning("[TownDungeonLoopManager] 가방에 장착 가능한 장비(Equipment) 아이템이 없습니다.");
+        return false;
     }
 
     /// <summary>
