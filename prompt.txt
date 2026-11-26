@@ -1,6 +1,29 @@
-CoreLoopDebugUI.cs에서 F1 키를 눌러 디버그 UI를 켜고 끌 때 한 번만 눌러도 즉시 토글되도록 입력 처리 위치를 수정해 줘.
+2D 픽셀 아트 기반 포켓몬 불가사의 던전(하늘의 탐험대) 스타일의 절차적 던전 맵 생성(GridGenerator)과 그리드 기반 턴제 이동 프로토타입을 구축해 줘.
+한 파일이 너무 비대해지지 않도록 단일 책임 원칙(SRP)에 맞춰 스크립트를 분리하고, 기존 TownDungeonLoopManager와 자연스럽게 연동되도록 작성해 줘.
 
-1. 수정 사항 (Assets/Scripts/UI/CoreLoopDebugUI.cs)
-- 현재 OnGUI() 내부에서 Input.GetKeyDown(KeyCode.F1)이나 Event.current로 F1 토글을 처리하고 있다면 해당 입력 체크 코드를 제거해 줘. (OnGUI는 한 프레임에 Layout/Repaint 등으로 여러 번 호출되어 토글이 중복 실행되는 버그가 발생함)
-- 대신 한 프레임에 단 한 번만 호출되는 Update() 메서드를 작성하고, 그 안에서 `if (Input.GetKeyDown(KeyCode.F1)) { isVisible = !isVisible; }` 형태로 토글 상태를 변경하도록 수정해 줘.
-- OnGUI()의 최상단에서는 `if (!isVisible) return;`만 검사하도록 깔끔하게 유지해 줘.
+1. 폴더 및 스크립트 생성 (Assets/Scripts/Dungeon 하위에 생성)
+[1] DungeonGridData.cs
+- 순수 C# 데이터 클래스 (TileType enum: Void, Wall, Floor, Corridor, Stairs)
+- 맵 크기(width = 40, height = 30), 2차원 타일 배열(TileType[,]), 생성된 방 목록(List<RectInt>), 시작 스폰 좌표(Vector2Int startPos), 다음 층 계단 좌표(Vector2Int stairsPos)를 보관.
+- 특정 좌표(x, y)가 이동 가능한 타일(Floor, Corridor, Stairs)인지 반환하는 IsWalkable(Vector2Int pos) 메서드 포함.
+
+[2] GridGenerator.cs
+- 포켓몬 불가사의 던전 스타일의 절차적 맵 생성기:
+  * 겹치지 않는 직사각형 방(Room, 최소 4x4 ~ 최대 8x6 크기)을 5~8개 무작위 배치.
+  * 생성된 방들의 중심점을 순서대로 1칸 너비의 'ㄱ'자 또는 'ㄴ'자 직교 복도(Corridor)로 연결.
+  * 바닥(Floor)과 복도(Corridor) 주변을 벽(Wall) 타일로 감싸고, 첫 번째 방의 랜덤 바닥 좌표를 startPos로, 가장 멀리 떨어진 방의 랜덤 바닥 좌표를 stairsPos(계단)로 지정.
+- 시각화 렌더링:
+  * 유니티 기본 2D Square 스프라이트를 활용해 타일 타입별로 색상을 구분하여 2D 그리드(1유닛 = 1칸)에 깔끔하게 타일 오브젝트들을 배치해 줘. (예: 바닥=밝은 베이지/회색, 복도=연한 회색, 벽=짙은 남색/갈색, 계단=청록색/노란색)
+  * 기존 생성된 타일이 있다면 정리 후 재생성하는 GenerateDungeon() 공개 메서드 제공.
+
+[3] TurnBasedPlayerController.cs
+- 그리드 좌표(Vector2Int gridPos) 기반 턴제 플레이어 이동 컨트롤러 (2D 도트 캐릭터 느낌의 원형/사각형 임시 스프라이트 생성 및 부착):
+  * 상하좌우(WASD / 방향키) 및 대각선 8방향 이동 입력 지원 (단, 불가사의 던전 규칙에 따라 대각선 이동 시 인접한 두 직교 타일 중 하나라도 벽(Wall)이면 코너 끼임 방지를 위해 대각선 이동 차단).
+  * 이동하려는 목표 좌표가 IsWalkable(targetPos)일 때만 부드럽게(Lerp/MoveTowards, 약 0.12초) 다음 칸으로 이동.
+  * 이동이 완료될 때마다 현재 턴 수(turnCount)를 1 증가시키고 로그 출력.
+  * 플레이어가 계단(stairsPos) 위에 도착하면 다음 층(floor + 1)으로 맵을 즉시 재생성(GenerateDungeon)하고, 테스트용으로 R 키를 누르면 현재 층 맵을 새로고침(재생성)하도록 구현해 줘.
+- 메인 카메라(Main Camera)가 2D Orthographic 시점으로 플레이어를 부드럽게 추적(Camera Follow)하도록 설정해 줘.
+
+2. 테스트 씬(DungeonScene) 구성
+- Assets/Scenes 폴더에 'DungeonScene.unity'를 새로 생성(또는 기존 씬에서 테스트 가능하도록 세팅)하고, 'DungeonManager' 오브젝트에 GridGenerator를, 'Player' 오브젝트에 TurnBasedPlayerController를 배치해 줘.
+- 플레이 모드 시작 시 자동으로 1층 던전이 생성되고 플레이어가 시작 방에 스폰되도록 연결한 뒤 씬을 저장해 줘.

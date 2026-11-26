@@ -31,6 +31,7 @@ public static class CoreLoopSceneSetup
     {
         var activeScene = EditorSceneManager.GetActiveScene();
         if (!activeScene.isLoaded) return;
+        if (!forceSave && activeScene.name != "SampleScene") return;
 
         bool isModified = false;
 
